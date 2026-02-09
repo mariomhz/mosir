@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My world, my languages</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        --font-montserrat: 'Montserrat', sans-serif;
+        --font-roboto-mono: 'Roboto Mono', monospace;
+      }
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #000;
+      }
+      canvas {
+        display: block;
+        position: fixed;
+        top: 0;
+        left: 0;
+      }
+
+      #title {
+        position: fixed;
+        top: 40px;
+        left: 40px;
+        font-family: var(--font-roboto-mono);
+        font-size: 36px;
+        font-weight: 300;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        color: white;
+        opacity: 0;
+        animation: fadeIn 2s ease forwards;
+        pointer-events: none;
+        z-index: 10;
+        transition: font-size 0.6s ease, top 0.6s ease, left 0.6s ease;
+      }
+      #title.collapsed {
+        font-size: 16px;
+        top: 16px;
+        left: 20px;
+      }
+
+      #description {
+        position: fixed;
+        top: 100px;
+        left: 40px;
+        max-width: 400px;
+        font-family: var(--font-montserrat);
+        font-size: 15px;
+        font-weight: 400;
+        line-height: 1.6;
+        color: rgba(255, 255, 255, 0.7);
+        opacity: 0;
+        animation: fadeIn 2.5s ease 0.5s forwards;
+        pointer-events: none;
+        z-index: 10;
+        transition: opacity 0.6s ease, transform 0.6s ease;
+      }
+      #description.hidden {
+        opacity: 0 !important;
+        transform: translateY(-10px);
+        pointer-events: none;
+      }
+
+      #hint {
+        position: fixed;
+        bottom: 40px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-family: var(--font-roboto-mono);
+        font-size: 13px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.5);
+        opacity: 0;
+        animation: fadeIn 2s ease 1.5s forwards, pulse 3s ease-in-out 3s infinite;
+        pointer-events: none;
+        z-index: 10;
+        transition: opacity 0.6s ease;
+      }
+      #hint.hidden {
+        opacity: 0 !important;
+        animation: none;
+      }
+
+      /* Info Card */
+      #info-card {
+        position: fixed;
+        z-index: 20;
+        padding: 20px 24px;
+        max-width: 280px;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgb(255, 255, 255);
+        border-radius: 12px;
+        pointer-events: none;
+        opacity: 1;
+        transform: translateY(0);
+        transition: opacity 0.3s ease, transform 0.3s ease;
+      }
+      #info-card.hidden {
+        opacity: 0;
+        transform: translateY(8px);
+        pointer-events: none;
+      }
+      #info-card-title {
+        margin: 0 0 8px 0;
+        font-family: var(--font-roboto-mono);
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: #ffffff;
+      }
+      #info-card-text {
+        margin: 0;
+        font-family: var(--font-montserrat);
+        font-size: 13px;
+        font-weight: 400;
+        line-height: 1.5;
+        color: rgba(255, 255, 255, 0.8);
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 0.5; }
+        50% { opacity: 1; }
+      }
+    </style>
+     <script type="importmap">
+      {
+				"imports": {
+					"three": "https://cdn.jsdelivr.net/npm/three@0.170/build/three.module.js",
+          "jsm/": "https://cdn.jsdelivr.net/npm/three@0.170/examples/jsm/"
+        }
+			}
+    </script>
+  </head>
+  <body>
+    <div id="title">My World My Languages</div>
+    <p id="description">A journey through the languages that shaped my world: each pin marks a place, a story, and a voice. Click the globe to explore.</p>
+    <div id="hint">Click the globe to explore</div>
+    <div id="info-card" class="hidden">
+      <h2 id="info-card-title"></h2>
+      <p id="info-card-text"></p>
+    </div>
+    <script type="module" src="index.js"></script>
+  </body>
+</html>
