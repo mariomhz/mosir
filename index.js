@@ -270,20 +270,29 @@ function updateInfoCardPosition() {
   const screenX = (projected.x * 0.5 + 0.5) * window.innerWidth;
   const screenY = (-projected.y * 0.5 + 0.5) * window.innerHeight;
 
-  const cardWidth = 280;
+  const isMobile = window.innerWidth < 768;
+  const cardWidth = isMobile ? Math.min(260, window.innerWidth - 40) : 280;
   const cardHeight = infoCardEl.offsetHeight || 120;
-  const margin = 20;
+  const margin = isMobile ? 10 : 20;
 
-  let left = screenX + margin;
-  let top = screenY - cardHeight / 2;
+  let left, top;
 
-  if (left + cardWidth + margin > window.innerWidth) {
-    left = screenX - cardWidth - margin;
+  if (isMobile) {
+    // On mobile, center the card at the bottom
+    left = (window.innerWidth - cardWidth) / 2;
+    top = window.innerHeight - cardHeight - margin - 60; // 60px from bottom for better visibility
+  } else {
+    // Desktop behavior - position next to marker
+    left = screenX + margin;
+    top = screenY - cardHeight / 2;
+
+    if (left + cardWidth + margin > window.innerWidth) {
+      left = screenX - cardWidth - margin;
+    }
+
+    top = Math.max(margin, Math.min(window.innerHeight - cardHeight - margin, top));
+    left = Math.max(margin, left);
   }
-
-  top = Math.max(margin, Math.min(window.innerHeight - cardHeight - margin, top));
-
-  left = Math.max(margin, left);
 
   infoCardEl.style.left = left + 'px';
   infoCardEl.style.top = top + 'px';
