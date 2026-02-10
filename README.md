@@ -166,4 +166,4 @@ For questions, suggestions, or collaboration opportunities, please open an issue
 
 ---
 
-Built with passion for languages and exploration.
+Built by Mario Hernández.
