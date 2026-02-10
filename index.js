@@ -94,12 +94,36 @@ const TITLE_MIN_SIZE = 14;
 const raycaster = new THREE.Raycaster();
 const pointerDownPos = new THREE.Vector2();
 let hoveredIndex = -1;
+
+// Detect mobile device
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
+
 const HOVER_SCALE = 5.0;
 const SELECTED_SCALE = 2.0;
-const HOVER_SCREEN_RADIUS = 60; 
+const HOVER_SCREEN_RADIUS = isMobile ? 80 : 60;
 const SCALE_LERP_SPEED = 0.12;
+const BASE_SCALE_MOBILE = 2.5; // Larger base size on mobile
 
-const markerTargetScales = markers.map(() => 1.0);
+// Set initial scales - larger on mobile for easier tapping
+const markerTargetScales = markers.map(() => isMobile ? BASE_SCALE_MOBILE : 1.0);
+
+// Make raycaster more forgiving on mobile
+raycaster.params.Points = { threshold: isMobile ? 0.15 : 0.1 };
+
+// Create invisible larger hitboxes for mobile
+const hitboxes = [];
+if (isMobile) {
+  markers.forEach((marker) => {
+    const hitboxGeo = new THREE.SphereGeometry(0.035, 8, 8); // Much larger than visible pin
+    const hitboxMat = new THREE.MeshBasicMaterial({
+      visible: false // Invisible but still detectable by raycaster
+    });
+    const hitbox = new THREE.Mesh(hitboxGeo, hitboxMat);
+    hitbox.position.copy(marker.tipPos);
+    globeGroup.add(hitbox);
+    hitboxes.push(hitbox);
+  });
+}
 
 controls.target.set(1.5, -1.0, 0);
 camera.position.set(1.5, -1.0, 3.5);
@@ -163,9 +187,11 @@ renderer.domElement.addEventListener("pointerup", (e) => {
   if (hoveredIndex >= 0) {
     selectMarker(hoveredIndex);
   } else {
-    const hits = raycaster.intersectObjects(pinHeads, false);
+    // On mobile, check hitboxes first for easier targeting
+    const checkObjects = isMobile && hitboxes.length > 0 ? hitboxes : pinHeads;
+    const hits = raycaster.intersectObjects(checkObjects, false);
     if (hits.length > 0) {
-      const hitIndex = pinHeads.indexOf(hits[0].object);
+      const hitIndex = checkObjects.indexOf(hits[0].object);
       if (hitIndex >= 0) selectMarker(hitIndex);
     } else {
       deselectMarker();
@@ -206,12 +232,13 @@ renderer.domElement.addEventListener("pointermove", (e) => {
   const newHovered = (closestDist < HOVER_SCREEN_RADIUS) ? closestIdx : -1;
 
   if (newHovered !== hoveredIndex) {
-    
+    const baseScale = isMobile ? BASE_SCALE_MOBILE : 1.0;
+
     if (hoveredIndex >= 0 && hoveredIndex !== selectedIndex) {
-      markerTargetScales[hoveredIndex] = 1.0;
+      markerTargetScales[hoveredIndex] = baseScale;
     }
     hoveredIndex = newHovered;
-    
+
     if (hoveredIndex >= 0 && hoveredIndex !== selectedIndex) {
       markerTargetScales[hoveredIndex] = HOVER_SCALE;
     }
@@ -221,18 +248,20 @@ renderer.domElement.addEventListener("pointermove", (e) => {
 });
 
 function selectMarker(index) {
+  const baseScale = isMobile ? BASE_SCALE_MOBILE : 1.0;
+
   if (selectedIndex >= 0) {
-    markerTargetScales[selectedIndex] = 1.0;
+    markerTargetScales[selectedIndex] = baseScale;
   }
 
   if (hoveredIndex >= 0 && hoveredIndex !== index) {
-    markerTargetScales[hoveredIndex] = 1.0;
+    markerTargetScales[hoveredIndex] = baseScale;
   }
   hoveredIndex = -1;
 
   selectedIndex = index;
   if (index >= 0) {
-    markerTargetScales[index] = SELECTED_SCALE;
+    markerTargetScales[index] = isMobile ? BASE_SCALE_MOBILE * 1.5 : SELECTED_SCALE;
     rotateGlobeToMarker(index);
     startZoom(ZOOM_CLOSE);
     showInfoCard(index);
@@ -240,8 +269,9 @@ function selectMarker(index) {
 }
 
 function deselectMarker() {
+  const baseScale = isMobile ? BASE_SCALE_MOBILE : 1.0;
   if (selectedIndex >= 0) {
-    markerTargetScales[selectedIndex] = 1.0;
+    markerTargetScales[selectedIndex] = baseScale;
     startZoom(ZOOM_DEFAULT);
     hideInfoCard();
   }
@@ -437,6 +467,12 @@ function animate() {
   controls.update();
   renderer.render(scene, camera);
 }
+
+// Initialize marker scales
+markers.forEach((m, i) => {
+  const initialScale = isMobile ? BASE_SCALE_MOBILE : 1.0;
+  m.head.scale.setScalar(initialScale);
+});
 
 animate();
 
