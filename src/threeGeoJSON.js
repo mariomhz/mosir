@@ -10,7 +10,7 @@ and draws the geoJSON geometries.
 
 */
 
-export function drawThreeGeo({ json, radius, materalOptions }) {
+export function drawThreeGeo({ json, radius, materialOptions }) {
   const container = new THREE.Object3D();
   container.userData.update = (t) => {
     for (let i = 0; i < container.children.length; i++) {
@@ -30,12 +30,12 @@ export function drawThreeGeo({ json, radius, materalOptions }) {
   for (let geom_num = 0; geom_num < json_geom.length; geom_num++) {
     if (json_geom[geom_num].type == 'Point') {
       convertToSphereCoords(json_geom[geom_num].coordinates, radius);
-      drawParticle(x_values[0], y_values[0], z_values[0], materalOptions);
+      drawParticle(x_values[0], y_values[0], z_values[0], materialOptions);
 
     } else if (json_geom[geom_num].type == 'MultiPoint') {
       for (let point_num = 0; point_num < json_geom[geom_num].coordinates.length; point_num++) {
         convertToSphereCoords(json_geom[geom_num].coordinates[point_num], radius);
-        drawParticle(x_values[0], y_values[0], z_values[0], materalOptions);
+        drawParticle(x_values[0], y_values[0], z_values[0], materialOptions);
       }
 
     } else if (json_geom[geom_num].type == 'LineString') {
@@ -44,7 +44,7 @@ export function drawThreeGeo({ json, radius, materalOptions }) {
       for (let point_num = 0; point_num < coordinate_array.length; point_num++) {
         convertToSphereCoords(coordinate_array[point_num], radius);
       }
-      drawLine(x_values, y_values, z_values, materalOptions);
+      drawLine(x_values, y_values, z_values, materialOptions);
 
     } else if (json_geom[geom_num].type == 'Polygon') {
       for (let segment_num = 0; segment_num < json_geom[geom_num].coordinates.length; segment_num++) {
@@ -53,7 +53,7 @@ export function drawThreeGeo({ json, radius, materalOptions }) {
         for (let point_num = 0; point_num < coordinate_array.length; point_num++) {
           convertToSphereCoords(coordinate_array[point_num], radius);
         }
-        drawLine(x_values, y_values, z_values, materalOptions);
+        drawLine(x_values, y_values, z_values, materialOptions);
       }
 
     } else if (json_geom[geom_num].type == 'MultiLineString') {
@@ -63,7 +63,7 @@ export function drawThreeGeo({ json, radius, materalOptions }) {
         for (let point_num = 0; point_num < coordinate_array.length; point_num++) {
           convertToSphereCoords(coordinate_array[point_num], radius);
         }
-        drawLine(x_values, y_values, z_values, materalOptions);
+        drawLine(x_values, y_values, z_values, materialOptions);
       }
 
     } else if (json_geom[geom_num].type == 'MultiPolygon') {
@@ -74,7 +74,7 @@ export function drawThreeGeo({ json, radius, materalOptions }) {
           for (let point_num = 0; point_num < coordinate_array.length; point_num++) {
             convertToSphereCoords(coordinate_array[point_num], radius);
           }
-          drawLine(x_values, y_values, z_values, materalOptions);
+          drawLine(x_values, y_values, z_values, materialOptions);
         }
       }
     } else {
@@ -138,11 +138,7 @@ export function drawThreeGeo({ json, radius, materalOptions }) {
     const lon_distance = Math.abs(lon1 - lon2);
     const lat_distance = Math.abs(lat1 - lat2);
 
-    if (lon_distance > 5 || lat_distance > 5) {
-      return true;
-    } else {
-      return false;
-    }
+    return lon_distance > 5 || lat_distance > 5;
   }
 
   function interpolatePoints(interpolation_array) {
@@ -199,7 +195,7 @@ export function drawThreeGeo({ json, radius, materalOptions }) {
 
     const particle_material = new THREE.PointsMaterial(options);
 
-    const particle = new THREE.Points(particle_geom, particle_material);
+    const particle = new THREE.Points(geo, particle_material);
     container.add(particle);
 
     clearArrays();
@@ -213,7 +209,7 @@ export function drawThreeGeo({ json, radius, materalOptions }) {
     }
     lineGeo.setPositions(verts);
     const lineMaterial = new LineMaterial({
-      color: 0xffffff,
+      color: options.color ?? 0xffffff,
       linewidth: 0.5,
       fog: false,
     });
