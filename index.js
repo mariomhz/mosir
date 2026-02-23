@@ -4,6 +4,7 @@ import getStarfield from "./src/getStarfield.js";
 import { drawThreeGeo } from "./src/threeGeoJSON.js";
 import { createMarkers } from "./src/languageMarkers.js";
 
+// --- Scene setup ---
 const w = window.innerWidth;
 const h = window.innerHeight;
 const scene = new THREE.Scene();
@@ -19,6 +20,7 @@ controls.enableDamping = true;
 controls.minDistance = 3.5;
 controls.maxDistance = 5;
 
+// --- Globe construction ---
 const globeGroup = new THREE.Group();
 scene.add(globeGroup);
 
@@ -37,13 +39,14 @@ const solidSphereMat = new THREE.MeshBasicMaterial({ color: 0x282828 });
 const solidSphere = new THREE.Mesh(solidSphereGeo, solidSphereMat);
 globeGroup.add(solidSphere);
 
-const stars = getStarfield({ numStars: 1000, fog: false });
+const stars = getStarfield({ numStars: 1000 });
 scene.add(stars);
 
 const GLOBE_RADIUS = 2;
 const markers = createMarkers(globeGroup, GLOBE_RADIUS);
 const pinHeads = markers.map(m => m.head);
 
+// --- GeoJSON loading ---
 fetch('./geojson/ne_50m_land.json')
   .then(response => response.text())
   .then(text => {
@@ -72,6 +75,7 @@ fetch('./geojson/ne_50m_admin_0_boundary_lines_land.json')
     globeGroup.add(borders);
   });
 
+// --- DOM references ---
 const titleEl = document.getElementById('title');
 const descriptionEl = document.getElementById('description');
 const hintEl = document.getElementById('hint');
@@ -79,6 +83,7 @@ const infoCardEl = document.getElementById('info-card');
 const infoCardTitleEl = document.getElementById('info-card-title');
 const infoCardTextEl = document.getElementById('info-card-text');
 
+// --- App state & constants ---
 let appState = "landing";
 
 let autoRotate = true;
@@ -95,7 +100,7 @@ const raycaster = new THREE.Raycaster();
 const pointerDownPos = new THREE.Vector2();
 let hoveredIndex = -1;
 
-// Detect mobile device
+// --- Mobile detection & scaling ---
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
 
 const HOVER_SCALE = 5.0;
@@ -125,6 +130,7 @@ if (isMobile) {
   });
 }
 
+// --- Landing → interactive transition ---
 controls.target.set(1.5, -1.0, 0);
 camera.position.set(1.5, -1.0, 3.5);
 controls.enabled = false;
@@ -157,6 +163,7 @@ function startTransition() {
   };
 }
 
+// --- Pointer event handlers ---
 renderer.domElement.addEventListener("pointerdown", (e) => {
   pointerDownPos.set(e.clientX, e.clientY);
 });
@@ -247,6 +254,7 @@ renderer.domElement.addEventListener("pointermove", (e) => {
   renderer.domElement.style.cursor = (hoveredIndex >= 0) ? 'pointer' : 'default';
 });
 
+// --- Marker selection/deselection ---
 function selectMarker(index) {
   const baseScale = isMobile ? BASE_SCALE_MOBILE : 1.0;
 
@@ -278,6 +286,7 @@ function deselectMarker() {
   selectedIndex = -1;
 }
 
+// --- Info card management ---
 function showInfoCard(index) {
   const lang = markers[index].lang;
   infoCardTitleEl.textContent = lang.name;
@@ -300,7 +309,6 @@ function updateInfoCardPosition() {
   const screenX = (projected.x * 0.5 + 0.5) * window.innerWidth;
   const screenY = (-projected.y * 0.5 + 0.5) * window.innerHeight;
 
-  const isMobile = window.innerWidth < 768;
   const cardWidth = isMobile ? Math.min(260, window.innerWidth - 40) : 280;
   const cardHeight = infoCardEl.offsetHeight || 120;
   const margin = isMobile ? 10 : 20;
@@ -328,6 +336,7 @@ function updateInfoCardPosition() {
   infoCardEl.style.top = top + 'px';
 }
 
+// --- Animation helpers ---
 function startZoom(targetDist) {
   controls.enableZoom = false;
   zoomAnim = {
@@ -389,6 +398,7 @@ function cubicEaseInOut(t) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
+// --- Main animation loop ---
 function animate() {
   requestAnimationFrame(animate);
 
@@ -451,7 +461,7 @@ function animate() {
     updateInfoCardPosition();
   }
 
-  // scale smoothely
+  // scale smoothly
   markers.forEach((m, i) => {
     const current = m.head.scale.x;
     const target = markerTargetScales[i];
@@ -476,6 +486,7 @@ markers.forEach((m, i) => {
 
 animate();
 
+// --- Window resize ---
 function handleWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
