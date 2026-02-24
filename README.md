@@ -1,5 +1,7 @@
 # Mosir
 
+![Mosir Demo](demo.gif)
+
 ## Etymology
 
 **Mosir** is an Ainu word meaning "world" or "land." The Ainu are the indigenous people of northern Japan (particularly Hokkaido), the Kuril Islands, and the southern part of Sakhalin. In Ainu cosmology, mosir represents the land where humans live, a concept that encompasses both the physical earth and the spiritual connection between people and place. This project adopts the name to symbolize how language shapes our understanding of the world and connects us to different lands and cultures.
@@ -34,12 +36,17 @@ The globe currently features eight languages, each with its own geographical mar
 
 ## Technology Stack
 
-- **Three.js**: 3D rendering and animation
-- **OrbitControls**: Camera manipulation and navigation
-- **GeoJSON**: Geographical data for land masses and boundaries
-- **Vanilla JavaScript**: Core application logic
-- **ES6 Modules**: Modern JavaScript module system
-- **Natural Earth Data**: High-quality geographical datasets
+Three.js | Vanilla JavaScript (ES6 Modules) | GeoJSON | Natural Earth Data | GitHub Actions
+
+## Tech Highlights
+
+- **Zero-build architecture** — No bundler, no npm, no node_modules. Pure ES6 modules resolved via import maps, with Three.js loaded from a versioned CDN. The entire app ships as static files.
+- **Custom GeoJSON-to-3D pipeline** — A from-scratch parser (`threeGeoJSON.js`) converts geographical coordinates into Three.js geometry, with automatic midpoint interpolation for segments >5° to prevent lines from cutting through the sphere.
+- **State-machine-driven UX** — Three explicit app states (`landing` → `transitioning` → `interactive`) govern input handling, camera behavior, and UI visibility, preventing invalid transitions and race conditions.
+- **Lerp-based animation system** — Smooth camera flights and marker scale transitions driven by `THREE.MathUtils.lerp()` with cubic ease-in-out tweening — no animation library needed.
+- **Spatial backface culling** — Markers on the far side of the globe fade out using camera-to-marker angle calculations with `smoothstep` opacity, and auto-deselect when rotated out of view.
+- **Mobile-optimized interaction** — Adaptive touch targets (2.5x marker scale, invisible hitboxes, increased raycaster threshold), screen-space proximity detection for hover, and repositioned info cards for thumb reach.
+- **CI/CD** — Automated deployment to GitHub Pages via GitHub Actions on every push to `main`.
 
 ## Project Structure
 
