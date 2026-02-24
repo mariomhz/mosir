@@ -55,7 +55,7 @@ fetch('./geojson/ne_50m_land.json')
       json: data,
       radius: GLOBE_RADIUS,
       materialOptions: {
-        color: 0x80FF80,
+        color: 0xffffff,
       },
     });
     globeGroup.add(land);
