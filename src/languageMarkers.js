@@ -1,9 +1,9 @@
 import * as THREE from "three";
 
 export const LANGUAGES = [
-  { id: "es", name: "Spanish",    lat: 28.5,  lon: -16.2, color: "#ff0000", description: "With a Spanish mother, Spanish became one of my first and most spoken languages, especially as I currently reside in the Canary Islands." },
-  { id: "pt", name: "Portuguese", lat: -22.2, lon: -43.2, color: "#ff0000", description: "As someone of Brazilian descent, it was extremely important to connect to my roots through language, which is why Portuguese is one of my first learned and most spoken languages." },
-  { id: "it", name: "Italian",    lat: 40.8,  lon: 14.2,  color: "#ff0000", description: "My dad is Italian and I spent a great deal of my life studying and living in Italy, which makes Italian one of my first languages." },
+  { id: "es", name: "Spanish",    lat: 28.5,  lon: -16.2, color: "#ff0000", description: "Spanish was there from the beginning, shaping how I think and express myself. It's one of my most spoken languages, deeply embedded in who I am." },
+  { id: "pt", name: "Portuguese", lat: -22.2, lon: -43.2, color: "#ff0000", description: "Portuguese isn't just a language I speak, it's one I live in. It was one of my first languages, woven into my identity and the way I navigate the world." },
+  { id: "it", name: "Italian",    lat: 40.8,  lon: 14.2,  color: "#ff0000", description: "Years of living and studying in Italy made Italian one of the languages that shaped my formative years. It opened doors to a different way of seeing the world." },
   { id: "fr", name: "French",     lat: 46.6,  lon: 2.2,   color: "#ff0000", description: "When I was in Italy, we had to study French in school and, as a language enthusiast, I took great pleasure in learning it. It also gave me the chance to help with interpretation when I volunteered." },
   { id: "no", name: "Norwegian",  lat: 60.5,  lon: 8.5,   color: "#ff0000", description: "I learned it in high school and it's the only Scandinavian language I know. It all started because of a TV show I loved, which led to me dedicating countless hours to learning the language." },
   { id: "ca", name: "Catalan",    lat: 41.6,  lon: 1.5,   color: "#ff0000", description: "I wanted to learn more Romance languages, and Catalan was one of the first options given its familiarity with the other languages I speak. I travel often to Barcelona and knowing the language has led to wonderful interactions in the city." },
