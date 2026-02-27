@@ -9,6 +9,7 @@ export const LANGUAGES = [
   { id: "ca", name: "Catalan",    lat: 41.6,  lon: 1.5,   color: "#ff0000", description: "I wanted to learn more Romance languages, and Catalan was one of the first options given its familiarity with the other languages I speak. I travel often to Barcelona and knowing the language has led to wonderful interactions in the city." },
   { id: "en", name: "English",    lat: 51.51,  lon: -0.09, color: "#ff0000", description: "As the son of an English teacher, my mother was never pushy but gently helped me learn English through the years, making it one of the first languages I ever spoke." },
   { id: "asl", name: "ASL",       lat: 41.76,  lon:  -72.68, color: "#ff0000", description: "ASL was a wonderful and eye-opening learning experience. I had never thought of language as something visual, and experiencing something I was so passionate about in a different form really opened my eyes to the true meaning of language." },
+  { id: "ja", name: "Japanese",   lat: 35.68,  lon: 139.65, color: "#1E90FF", description: "Japanese was the first language I chose to learn on my own as a teenager. A decade later, I'm back to studying it, working toward my dream of visiting Japan. It represents a long-held passion and the determination to pursue what truly matters to me." },
 ];
 
 export function latLonToVec3(lat, lon, radius) {

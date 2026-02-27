@@ -23,7 +23,7 @@ Mosir is an interactive 3D globe visualization that maps the geographical and pe
 
 ## Languages Featured
 
-The globe currently features eight languages, each with its own geographical marker and personal narrative:
+The globe currently features nine languages, each with its own geographical marker and personal narrative:
 
 1. **Spanish** - Canary Islands, Spain
 2. **Portuguese** - Rio de Janeiro, Brazil
@@ -31,8 +31,9 @@ The globe currently features eight languages, each with its own geographical mar
 4. **French** - Central France
 5. **Norwegian** - Central Norway
 6. **Catalan** - Catalonia, Spain
-7. **English** - United States
+7. **English** - London, UK
 8. **ASL (American Sign Language)** - United States
+9. **Japanese** - Tokyo, Japan
 
 ## Technology Stack
 
