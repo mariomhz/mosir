@@ -1,7 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from 'jsm/controls/OrbitControls.js';
 import getStarfield from "./src/getStarfield.js";
-import { drawThreeGeo } from "./src/threeGeoJSON.js";
 import { createMarkers, LANGUAGES } from "./src/languageMarkers.js";
 import { buildGlobeTextures } from "./src/globeTextures.js";
 import { createAtmosphere } from "./src/atmosphere.js";
@@ -134,20 +133,6 @@ Promise.all([
     idData: textures.idData,
     countryNames: textures.countryNames,
   });
-
-  const land = drawThreeGeo({
-    json: landJson,
-    radius: GLOBE_RADIUS * 1.001,
-    materialOptions: { color: 0xffffff },
-  });
-  globeGroup.add(land);
-
-  const borders = drawThreeGeo({
-    json: bordersJson,
-    radius: GLOBE_RADIUS * 1.001,
-    materialOptions: { color: 0xffffff },
-  });
-  globeGroup.add(borders);
 });
 
 const titleEl = document.getElementById('title');

@@ -10,6 +10,8 @@ import * as THREE from "three";
 export const PALETTE = {
   ocean: "#0b0f14",
   land: "#d8d8d8",
+  coast: "#f2f2f2",
+  border: "rgba(90,110,130,0.85)",
 };
 
 function makeCanvas(width, height) {
@@ -91,6 +93,42 @@ function fillFeatures(ctx, features, width, height, fillStyle) {
   }
 }
 
+function strokeFeatures(ctx, features, width, height, strokeStyle, lineWidth) {
+  ctx.strokeStyle = strokeStyle;
+  ctx.lineWidth = lineWidth;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+
+  for (const feature of features) {
+    const geom = feature.geometry;
+    if (!geom) continue;
+    const lines =
+      geom.type === "LineString"
+        ? [geom.coordinates]
+        : geom.type === "MultiLineString"
+        ? geom.coordinates
+        : geom.type === "Polygon"
+        ? geom.coordinates
+        : geom.type === "MultiPolygon"
+        ? geom.coordinates.flat()
+        : [];
+
+    for (const line of lines) {
+      if (line.length < 2) continue;
+      const unwrapped = unwrapRing(line);
+      for (const shift of WRAP_OFFSETS) {
+        ctx.beginPath();
+        unwrapped.forEach(([lon, lat], i) => {
+          const [x, y] = project(lon + shift, lat, width, height);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      }
+    }
+  }
+}
+
 /** Country index -> a colour we can read back exactly. Index 0 means ocean. */
 export function indexToColor(index) {
   const id = index + 1;
@@ -110,10 +148,13 @@ export function buildGlobeTextures({ land, borders, countries, size }) {
   const colorCtx = colorCanvas.getContext("2d");
   colorCtx.fillStyle = PALETTE.ocean;
   colorCtx.fillRect(0, 0, width, height);
-  // Fill only. The crisp edges come from the vector lines drawn over the
-  // sphere, and stroking here as well doubled every edge and left white
-  // specks on small islands.
+  // Edges live in the texture, not as separate line geometry. Lines floating
+  // at a fixed radius get buried by the displaced terrain and poke through in
+  // fragments, which is what the white speckling along every border was.
   fillFeatures(colorCtx, land.features, width, height, PALETTE.land);
+  const edgeWidth = Math.max(1, size / 4096);
+  strokeFeatures(colorCtx, borders.features, width, height, PALETTE.border, edgeWidth);
+  strokeFeatures(colorCtx, land.features, width, height, PALETTE.coast, edgeWidth);
 
   // Land mask drives displacement, so it only needs to be black or white.
   const maskCanvas = makeCanvas(width / 2, height / 2);
