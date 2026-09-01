@@ -231,7 +231,11 @@ renderer.domElement.addEventListener("pointerdown", (e) => {
 renderer.domElement.addEventListener("pointerup", (e) => {
   const dx = e.clientX - pointerDownPos.x;
   const dy = e.clientY - pointerDownPos.y;
-  if (dx * dx + dy * dy > 25) return;
+  if (dx * dx + dy * dy > 25) {
+    // Actually dragged the globe, so the tour should get out of the way.
+    stopTour();
+    return;
+  }
 
   const clickNDC = new THREE.Vector2(
     (e.clientX / window.innerWidth) * 2 - 1,
@@ -250,6 +254,8 @@ renderer.domElement.addEventListener("pointerup", (e) => {
 
   if (appState === "transitioning") return;
 
+  // A deliberate tap on the globe also ends the tour.
+  stopTour();
 
   if (hoveredIndex >= 0) {
     selectMarker(hoveredIndex);
@@ -715,11 +721,18 @@ function stopTour() {
   if (tourButtonEl) tourButtonEl.textContent = 'Play tour';
 }
 
+function showTourProgress(i) {
+  if (tourButtonEl) {
+    tourButtonEl.textContent = `Stop tour ${i + 1}/${markers.length}`;
+  }
+}
+
 function startTour() {
   let i = selectedIndex >= 0 ? selectedIndex : -1;
   const step = () => {
     i = (i + 1) % markers.length;
     selectMarker(i);
+    showTourProgress(i);
   };
   whenInteractive(step);
   // The flight takes 1.2s and the zoom another 1.2s, so a 4.5s cycle left
@@ -735,8 +748,10 @@ if (tourButtonEl) {
   });
 }
 
-// Any direct interaction ends the tour, it should never fight the user.
-renderer.domElement.addEventListener('pointerdown', stopTour);
+// Zooming is deliberate, so it ends the tour. A bare pointerdown is not:
+// on a touch screen it fires for any incidental contact, and it was killing
+// the tour within seconds of starting it.
+renderer.domElement.addEventListener('wheel', stopTour, { passive: true });
 
 // --- Entry point ------------------------------------------------------------
 

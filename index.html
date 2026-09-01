@@ -270,6 +270,16 @@
       #panel-toggle { display: none; }
 
       @media (max-width: 768px) {
+        /* The title spans the full width, so it ran underneath the languages
+           button in the top right. Leave that corner free. */
+        #title {
+          right: 130px;
+        }
+
+        #description {
+          top: 76px;
+        }
+
         #panel-toggle {
           display: block;
           position: fixed;
