@@ -190,6 +190,15 @@ controls.update();
 
 let transitionAnim = null;
 
+/*
+ * The landing flight drives the camera itself for two seconds. Selecting a
+ * marker during it starts a second camera animation that the transition then
+ * overwrites every frame, so the marker never actually gets flown to and its
+ * card closes as soon as the shorter rotation ends. Anything that selects
+ * from the landing state has to wait for the flight to land first.
+ */
+let pendingAfterTransition = null;
+
 function startTransition() {
   if (appState !== "landing") return;
   appState = "transitioning";
@@ -513,6 +522,12 @@ function animate() {
       appState = "interactive";
       controls.enabled = true;
       autoRotate = false;
+
+      if (pendingAfterTransition) {
+        const queued = pendingAfterTransition;
+        pendingAfterTransition = null;
+        queued();
+      }
     }
   }
 
@@ -615,13 +630,21 @@ function skipLandingTo(index) {
 
 // --- Keyboard ---------------------------------------------------------------
 
+function whenInteractive(action) {
+  if (appState === "interactive") {
+    action();
+    return;
+  }
+  if (appState === "landing") startTransition();
+  pendingAfterTransition = action;
+}
+
 function focusMarker(step) {
   stopTour();
-  if (appState === "landing") startTransition();
   const next = selectedIndex < 0
     ? 0
     : (selectedIndex + step + markers.length) % markers.length;
-  selectMarker(next);
+  whenInteractive(() => selectMarker(next));
 }
 
 window.addEventListener('keydown', (e) => {
@@ -693,13 +716,12 @@ function stopTour() {
 }
 
 function startTour() {
-  if (appState === "landing") startTransition();
   let i = selectedIndex >= 0 ? selectedIndex : -1;
   const step = () => {
     i = (i + 1) % markers.length;
     selectMarker(i);
   };
-  step();
+  whenInteractive(step);
   // The flight takes 1.2s and the zoom another 1.2s, so a 4.5s cycle left
   // barely a second to actually read the card.
   tourTimer = setInterval(step, 9000);
