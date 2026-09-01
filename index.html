@@ -198,6 +198,106 @@
           font-size: 13px;
         }
       }
+
+      #country-label {
+        position: fixed;
+        z-index: 12;
+        padding: 4px 8px;
+        font-family: var(--font-roboto-mono);
+        font-size: 11px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: #fff;
+        background: rgba(0, 0, 0, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        pointer-events: none;
+        white-space: nowrap;
+      }
+      #country-label.hidden { display: none; }
+
+      #panel {
+        position: fixed;
+        top: 50%;
+        right: 20px;
+        transform: translateY(-50%);
+        z-index: 11;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      #language-list {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .language-item {
+        background: none;
+        border: none;
+        padding: 4px 8px;
+        text-align: right;
+        font-family: var(--font-roboto-mono);
+        font-size: 11px;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.45);
+        cursor: pointer;
+        transition: color 0.25s ease;
+      }
+      .language-item:hover,
+      .language-item:focus-visible { color: #fff; }
+      .language-item.active {
+        color: #fff;
+        border-right: 2px solid #ff4d4d;
+      }
+
+      #tour-button {
+        margin-top: 10px;
+        background: none;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        padding: 6px 10px;
+        font-family: var(--font-roboto-mono);
+        font-size: 10px;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.7);
+        cursor: pointer;
+        transition: color 0.25s ease, border-color 0.25s ease;
+      }
+      #tour-button:hover { color: #fff; border-color: #fff; }
+
+      #panel-toggle { display: none; }
+
+      @media (max-width: 768px) {
+        #panel-toggle {
+          display: block;
+          position: fixed;
+          top: 12px;
+          right: 12px;
+          z-index: 13;
+          background: none;
+          border: 1px solid rgba(255, 255, 255, 0.3);
+          padding: 6px 10px;
+          font-family: var(--font-roboto-mono);
+          font-size: 10px;
+          letter-spacing: 1.5px;
+          text-transform: uppercase;
+          color: rgba(255, 255, 255, 0.8);
+        }
+        #panel {
+          top: 52px;
+          transform: none;
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.25s ease;
+        }
+        body.panel-open #panel {
+          opacity: 1;
+          pointer-events: auto;
+        }
+        #country-label { display: none; }
+      }
     </style>
      <script type="importmap">
       {
@@ -216,6 +316,12 @@
       <h2 id="info-card-title"></h2>
       <p id="info-card-text"></p>
     </div>
+    <div id="country-label" class="hidden"></div>
+    <button id="panel-toggle" type="button">Languages</button>
+    <nav id="panel" aria-label="Languages">
+      <div id="language-list"></div>
+      <button id="tour-button" type="button">Play tour</button>
+    </nav>
     <script type="module" src="index.js"></script>
   </body>
 </html>

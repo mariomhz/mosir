@@ -2,7 +2,10 @@ import * as THREE from "three";
 import { OrbitControls } from 'jsm/controls/OrbitControls.js';
 import getStarfield from "./src/getStarfield.js";
 import { drawThreeGeo } from "./src/threeGeoJSON.js";
-import { createMarkers } from "./src/languageMarkers.js";
+import { createMarkers, LANGUAGES } from "./src/languageMarkers.js";
+import { buildGlobeTextures } from "./src/globeTextures.js";
+import { createAtmosphere } from "./src/atmosphere.js";
+import { createCountryPicker } from "./src/countryPicker.js";
 
 const w = window.innerWidth;
 const h = window.innerHeight;
@@ -19,6 +22,8 @@ controls.enableDamping = true;
 controls.minDistance = 3.5;
 controls.maxDistance = 5;
 
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
+
 const globeGroup = new THREE.Group();
 scene.add(globeGroup);
 
@@ -32,10 +37,67 @@ const edges = new THREE.EdgesGeometry(geometry, 1);
 const line = new THREE.LineSegments(edges, lineMat);
 globeGroup.add(line);
 
-const solidSphereGeo = new THREE.SphereGeometry(1.99, 64, 64);
-const solidSphereMat = new THREE.MeshBasicMaterial({ color: 0x282828 });
+// Lit rather than MeshBasic, so the sphere actually shades and shows a
+// terminator instead of reading as a flat disc.
+const sunLight = new THREE.DirectionalLight(0xfff4e6, 2.6);
+sunLight.position.set(-5, 2, 4);
+scene.add(sunLight);
+scene.add(new THREE.AmbientLight(0x2a3a4a, 1.1));
+
+const SPHERE_SEGMENTS = isMobile ? 256 : 512;
+const solidSphereGeo = new THREE.SphereGeometry(1.99, SPHERE_SEGMENTS, SPHERE_SEGMENTS / 2);
+// A 1x1 placeholder so the material always compiles with the map chunk in it.
+// Without a map three never declares vMapUv, and the highlight code injected
+// below references it, so the first frames would fail to compile.
+const placeholderMap = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+placeholderMap.needsUpdate = true;
+
+const solidSphereMat = new THREE.MeshStandardMaterial({
+  color: 0xffffff,
+  roughness: 0.92,
+  metalness: 0.0,
+  map: placeholderMap,
+  displacementScale: 0.0,
+});
+
+// Country highlighting rides along inside the standard material: the id map
+// and the hovered id go in as uniforms, and matching pixels get tinted. No
+// canvas redraw or texture upload when the hovered country changes.
+const highlightUniforms = {
+  // Points at the placeholder until the real id map is built; a null sampler
+  // binds to whatever is on unit 0.
+  uIdMap: { value: placeholderMap },
+  uHighlightId: { value: -1.0 },
+  uHighlightColor: { value: new THREE.Color(0xff4d4d) },
+};
+
+solidSphereMat.onBeforeCompile = (shader) => {
+  shader.uniforms.uIdMap = highlightUniforms.uIdMap;
+  shader.uniforms.uHighlightId = highlightUniforms.uHighlightId;
+  shader.uniforms.uHighlightColor = highlightUniforms.uHighlightColor;
+
+  shader.fragmentShader = shader.fragmentShader
+    .replace('#include <common>', `#include <common>
+      uniform sampler2D uIdMap;
+      uniform float uHighlightId;
+      uniform vec3 uHighlightColor;`)
+    .replace('#include <map_fragment>', `#include <map_fragment>
+      {
+        vec3 idTexel = texture2D(uIdMap, vMapUv).rgb;
+        float id = floor(idTexel.r * 255.0 + 0.5) * 65536.0
+                 + floor(idTexel.g * 255.0 + 0.5) * 256.0
+                 + floor(idTexel.b * 255.0 + 0.5);
+        if (uHighlightId >= 0.0 && abs(id - uHighlightId) < 0.5) {
+          diffuseColor.rgb = mix(diffuseColor.rgb, uHighlightColor, 0.55);
+        }
+      }`);
+};
+
 const solidSphere = new THREE.Mesh(solidSphereGeo, solidSphereMat);
 globeGroup.add(solidSphere);
+
+const atmosphere = createAtmosphere({ radius: 2 });
+globeGroup.add(atmosphere);
 
 const stars = getStarfield({ numStars: 1000 });
 scene.add(stars);
@@ -44,33 +106,49 @@ const GLOBE_RADIUS = 2;
 const markers = createMarkers(globeGroup, GLOBE_RADIUS);
 const pinHeads = markers.map(m => m.head);
 
-fetch('./geojson/ne_50m_land.json')
-  .then(response => response.text())
-  .then(text => {
-    const data = JSON.parse(text);
-    const land = drawThreeGeo({
-      json: data,
-      radius: GLOBE_RADIUS,
-      materialOptions: {
-        color: 0xffffff,
-      },
-    });
-    globeGroup.add(land);
+let countryPicker = null;
+
+// One pass over the GeoJSON produces everything: the surface texture, the
+// land mask that raises the continents, and the id map used for picking.
+// The vector coastlines stay on top so edges keep their crispness.
+Promise.all([
+  fetch('./geojson/ne_50m_land.json').then(r => r.json()),
+  fetch('./geojson/ne_50m_admin_0_boundary_lines_land.json').then(r => r.json()),
+  fetch('./geojson/countries.json').then(r => r.json()),
+]).then(([landJson, bordersJson, countriesJson]) => {
+  const textures = buildGlobeTextures({
+    land: landJson,
+    borders: bordersJson,
+    countries: countriesJson,
+    size: isMobile ? 2048 : 4096,
   });
 
-fetch('./geojson/ne_50m_admin_0_boundary_lines_land.json')
-  .then(response => response.text())
-  .then(text => {
-    const data = JSON.parse(text);
-    const borders = drawThreeGeo({
-      json: data,
-      radius: GLOBE_RADIUS,
-      materialOptions: {
-        color: 0xffffff,
-      },
-    });
-    globeGroup.add(borders);
+  solidSphereMat.map = textures.colorMap;
+  solidSphereMat.displacementMap = textures.displacementMap;
+  solidSphereMat.displacementScale = 0.035;
+  solidSphereMat.needsUpdate = true;
+  highlightUniforms.uIdMap.value = textures.idMap;
+
+  countryPicker = createCountryPicker({
+    globeMesh: solidSphere,
+    idData: textures.idData,
+    countryNames: textures.countryNames,
   });
+
+  const land = drawThreeGeo({
+    json: landJson,
+    radius: GLOBE_RADIUS * 1.001,
+    materialOptions: { color: 0xffffff },
+  });
+  globeGroup.add(land);
+
+  const borders = drawThreeGeo({
+    json: bordersJson,
+    radius: GLOBE_RADIUS * 1.001,
+    materialOptions: { color: 0xffffff },
+  });
+  globeGroup.add(borders);
+});
 
 const titleEl = document.getElementById('title');
 const descriptionEl = document.getElementById('description');
@@ -95,7 +173,6 @@ const raycaster = new THREE.Raycaster();
 const pointerDownPos = new THREE.Vector2();
 let hoveredIndex = -1;
 
-const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
 
 const HOVER_SCALE = 5.0;
 const SELECTED_SCALE = 2.0;
@@ -240,8 +317,47 @@ renderer.domElement.addEventListener("pointermove", (e) => {
     }
   }
 
+  updateCountryHover(e);
+
   renderer.domElement.style.cursor = (hoveredIndex >= 0) ? 'pointer' : 'default';
 });
+
+const countryLabelEl = document.getElementById('country-label');
+let hoveredCountry = -1;
+
+function updateCountryHover(e) {
+  if (!countryPicker) return;
+
+  // A marker under the cursor wins; the country tint would only distract.
+  if (hoveredIndex >= 0) {
+    setHoveredCountry(null);
+    return;
+  }
+
+  const ndc = new THREE.Vector2(
+    (e.clientX / window.innerWidth) * 2 - 1,
+    -(e.clientY / window.innerHeight) * 2 + 1
+  );
+  setHoveredCountry(countryPicker.pick(ndc, camera), e);
+}
+
+function setHoveredCountry(hit, e) {
+  const index = hit ? hit.index : -1;
+  if (index !== hoveredCountry) {
+    hoveredCountry = index;
+    highlightUniforms.uHighlightId.value = index >= 0 ? index + 1 : -1;
+  }
+  if (!countryLabelEl) return;
+
+  if (hit && e) {
+    countryLabelEl.textContent = hit.name;
+    countryLabelEl.style.left = (e.clientX + 14) + 'px';
+    countryLabelEl.style.top = (e.clientY + 14) + 'px';
+    countryLabelEl.classList.remove('hidden');
+  } else {
+    countryLabelEl.classList.add('hidden');
+  }
+}
 
 // --- Marker selection/deselection ---
 function selectMarker(index) {
@@ -263,6 +379,8 @@ function selectMarker(index) {
     startZoom(ZOOM_CLOSE);
     showInfoCard(index);
   }
+  syncHash(index);
+  updateLanguageListActive();
 }
 
 function deselectMarker() {
@@ -273,6 +391,8 @@ function deselectMarker() {
     hideInfoCard();
   }
   selectedIndex = -1;
+  syncHash(-1);
+  updateLanguageListActive();
 }
 
 function showInfoCard(index) {
@@ -468,6 +588,148 @@ markers.forEach((m, i) => {
 });
 
 animate();
+
+// --- Deep links -------------------------------------------------------------
+// Each language gets a hash so a marker can be linked and shared, which was
+// impossible before: every state lived only in memory.
+
+function slugFor(lang) {
+  return lang.name.toLowerCase().replace(/[^a-z]/g, '');
+}
+
+function syncHash(index) {
+  const hash = index >= 0 ? '#' + slugFor(markers[index].lang) : ' ';
+  if (index >= 0) {
+    if (location.hash !== hash) history.replaceState(null, '', hash);
+  } else if (location.hash) {
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+}
+
+function indexFromHash() {
+  const slug = location.hash.replace('#', '').toLowerCase();
+  if (!slug) return -1;
+  return markers.findIndex((m) => slugFor(m.lang) === slug);
+}
+
+function skipLandingTo(index) {
+  appState = "interactive";
+  controls.target.set(0, 0, 0);
+  controls.enabled = true;
+  autoRotate = false;
+  titleEl.classList.add('collapsed');
+  descriptionEl.classList.add('hidden');
+  hintEl.classList.add('hidden');
+  selectMarker(index);
+}
+
+// --- Keyboard ---------------------------------------------------------------
+
+function focusMarker(step) {
+  stopTour();
+  if (appState === "landing") startTransition();
+  const next = selectedIndex < 0
+    ? 0
+    : (selectedIndex + step + markers.length) % markers.length;
+  selectMarker(next);
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    stopTour();
+    deselectMarker();
+    return;
+  }
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    focusMarker(1);
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    focusMarker(-1);
+  } else if (e.key === 'Enter' || e.key === ' ') {
+    if (appState === "landing") {
+      e.preventDefault();
+      startTransition();
+    }
+  }
+});
+
+// --- Language index ---------------------------------------------------------
+
+const languageListEl = document.getElementById('language-list');
+const panelToggleEl = document.getElementById('panel-toggle');
+
+if (languageListEl) {
+  markers.forEach((m, i) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'language-item';
+    item.textContent = m.lang.name;
+    item.addEventListener('click', () => {
+      stopTour();
+      if (appState === "landing") {
+        skipLandingTo(i);
+      } else {
+        selectMarker(i);
+      }
+    });
+    languageListEl.appendChild(item);
+  });
+}
+
+if (panelToggleEl) {
+  panelToggleEl.addEventListener('click', () => {
+    document.body.classList.toggle('panel-open');
+  });
+}
+
+function updateLanguageListActive() {
+  if (!languageListEl) return;
+  Array.from(languageListEl.children).forEach((el, i) => {
+    el.classList.toggle('active', i === selectedIndex);
+  });
+}
+
+// --- Guided tour ------------------------------------------------------------
+
+const tourButtonEl = document.getElementById('tour-button');
+let tourTimer = null;
+
+function stopTour() {
+  if (tourTimer === null) return;
+  clearInterval(tourTimer);
+  tourTimer = null;
+  if (tourButtonEl) tourButtonEl.textContent = 'Play tour';
+}
+
+function startTour() {
+  if (appState === "landing") startTransition();
+  let i = selectedIndex >= 0 ? selectedIndex : -1;
+  const step = () => {
+    i = (i + 1) % markers.length;
+    selectMarker(i);
+  };
+  step();
+  tourTimer = setInterval(step, 4500);
+  if (tourButtonEl) tourButtonEl.textContent = 'Stop tour';
+}
+
+if (tourButtonEl) {
+  tourButtonEl.addEventListener('click', () => {
+    if (tourTimer !== null) stopTour();
+    else startTour();
+  });
+}
+
+// Any direct interaction ends the tour, it should never fight the user.
+renderer.domElement.addEventListener('pointerdown', stopTour);
+
+// --- Entry point ------------------------------------------------------------
+
+window.addEventListener('load', () => {
+  const index = indexFromHash();
+  if (index >= 0) skipLandingTo(index);
+});
 
 function handleWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
