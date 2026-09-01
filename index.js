@@ -479,7 +479,12 @@ function updateBackfaceVisibility() {
     m.stalk.material.opacity = opacity * 0.8;
     m.head.material.opacity = opacity;
 
-    if (i === selectedIndex && dot < 0) {
+    // Only drop the selection when the marker has been turned away from by
+    // hand. While the camera is still flying to it the marker is legitimately
+    // behind the globe, and deselecting there closed the card before it
+    // arrived. Japanese sits at 140 east, far from every other marker, so it
+    // was always on the far side when picked and never got to show at all.
+    if (i === selectedIndex && dot < 0 && !rotAnim) {
       deselectMarker();
     }
   });
@@ -695,7 +700,9 @@ function startTour() {
     selectMarker(i);
   };
   step();
-  tourTimer = setInterval(step, 4500);
+  // The flight takes 1.2s and the zoom another 1.2s, so a 4.5s cycle left
+  // barely a second to actually read the card.
+  tourTimer = setInterval(step, 9000);
   if (tourButtonEl) tourButtonEl.textContent = 'Stop tour';
 }
 
