@@ -102,6 +102,109 @@
         animation: none;
       }
 
+
+      /* Loading screen */
+      #loader {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        background: #000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: opacity 0.7s ease;
+      }
+      /*
+        display:flex on an id selector outranks the [hidden] rule in the
+        browser default sheet, so hidden alone would not actually hide it.
+      */
+      #loader[hidden] { display: none; }
+      #loader.done {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #loader-inner {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+        padding: 0 24px;
+      }
+      #loader-title {
+        font-family: var(--font-roboto-mono);
+        font-size: 14px;
+        font-weight: 300;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.85);
+        text-align: center;
+      }
+      #loader-bar {
+        position: relative;
+        width: 200px;
+        max-width: 60vw;
+        height: 2px;
+        background: rgba(255, 255, 255, 0.15);
+        overflow: hidden;
+      }
+      #loader-fill {
+        position: absolute;
+        inset: 0;
+        background: rgba(255, 255, 255, 0.9);
+        transform: scaleX(0);
+        transform-origin: left center;
+        transition: transform 0.35s ease;
+      }
+      /*
+        Rasterising the map blocks the main thread for a couple of seconds, and
+        a bar that only moves when JavaScript says so would sit frozen through
+        it. A transform animation runs on the compositor instead, so this keeps
+        sweeping while nothing else on the page can.
+      */
+      #loader-sweep {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 40%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+        animation: sweep 1.5s ease-in-out infinite;
+      }
+      @keyframes sweep {
+        from { transform: translateX(-110%); }
+        to   { transform: translateX(360%); }
+      }
+      #loader-status {
+        font-family: var(--font-roboto-mono);
+        font-size: 10px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.45);
+        text-align: center;
+        min-height: 1.2em;
+      }
+      #loader.failed #loader-fill { background: #ff4d4d; }
+      #loader.failed #loader-sweep { animation: none; opacity: 0; }
+
+      /* The landing copy animates itself in. Hold it until the globe is up,
+         otherwise it plays out behind the loading screen and is already over
+         by the time anyone can see it. */
+      body.loading #title,
+      body.loading #description,
+      body.loading #hint {
+        animation-play-state: paused;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #loader-sweep { animation: none; }
+        #loader { transition: none; }
+      }
+
+      @media (min-width: 768px) {
+        #loader-title { font-size: 18px; }
+        #loader-bar { width: 260px; }
+      }
+
       /* Info Card */
       #info-card {
         position: fixed;
@@ -318,7 +421,24 @@
 			}
     </script>
   </head>
-  <body>
+  <body class="loading">
+    <div id="loader">
+      <div id="loader-inner">
+        <div id="loader-title">My World My Languages</div>
+        <div
+          id="loader-bar"
+          role="progressbar"
+          aria-label="Loading the globe"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="0"
+        >
+          <div id="loader-fill"></div>
+          <div id="loader-sweep"></div>
+        </div>
+        <div id="loader-status" role="status" aria-live="polite">Loading map data</div>
+      </div>
+    </div>
     <div id="title">My World My Languages</div>
     <p id="description">A journey through the languages that shaped my world: each pin marks a place, a story, and a voice. Click the globe to explore.</p>
     <div id="hint">Click the globe to explore</div>

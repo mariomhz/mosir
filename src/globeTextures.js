@@ -5,6 +5,12 @@ import * as THREE from "three";
  * once into equirectangular canvases. That keeps the vector look, avoids
  * triangulating polygons onto a sphere, and gives three textures from one pass:
  * colour for the surface, a land mask for relief, and an id map for picking.
+ *
+ * Filling 1400 land shapes three times over onto an 18 megapixel canvas takes
+ * a couple of seconds, and canvas work cannot be moved off the main thread
+ * here, so the build is broken into stages that hand control back to the
+ * browser in between. That is the only reason this is async: nothing waits on
+ * the network, it waits on paint.
  */
 
 export const PALETTE = {
@@ -13,6 +19,13 @@ export const PALETTE = {
   coast: "#f2f2f2",
   border: "rgba(90,110,130,0.85)",
 };
+
+/** Resolves once the browser has had a chance to paint. */
+function nextPaint() {
+  return new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  );
+}
 
 function makeCanvas(width, height) {
   const canvas = document.createElement("canvas");
@@ -139,42 +152,71 @@ export function colorToIndex(r, g, b) {
   return ((r << 16) | (g << 8) | b) - 1;
 }
 
-export function buildGlobeTextures({ land, borders, countries, size, maxAnisotropy = 8 }) {
+export async function buildGlobeTextures({
+  land,
+  borders,
+  countries,
+  size,
+  maxAnisotropy = 8,
+  onProgress = () => {},
+}) {
   const width = size;
   const height = size / 2;
+
+  // Each stage announces itself and then yields, so the label on screen names
+  // the work that is about to block rather than the one that just finished.
+  async function stage(fraction, label, work) {
+    onProgress(fraction, label);
+    await nextPaint();
+    work();
+  }
 
   // Surface colour: ocean, land fill, then coastlines and borders on top.
   const colorCanvas = makeCanvas(width, height);
   const colorCtx = colorCanvas.getContext("2d");
-  colorCtx.fillStyle = PALETTE.ocean;
-  colorCtx.fillRect(0, 0, width, height);
-  // Edges live in the texture, not as separate line geometry. Lines floating
-  // at a fixed radius get buried by the displaced terrain and poke through in
-  // fragments, which is what the white speckling along every border was.
-  fillFeatures(colorCtx, land.features, width, height, PALETTE.land);
-  // A one texel line ends up sub-pixel once the sphere is on screen, which is
-  // what made the borders look soft. Scale the stroke with the texture so the
-  // lines stay solid at any size.
-  const edgeWidth = Math.max(1.5, size / 2048);
-  strokeFeatures(colorCtx, borders.features, width, height, PALETTE.border, edgeWidth);
-  strokeFeatures(colorCtx, land.features, width, height, PALETTE.coast, edgeWidth);
+
+  await stage(0.0, "Filling the continents", () => {
+    colorCtx.fillStyle = PALETTE.ocean;
+    colorCtx.fillRect(0, 0, width, height);
+    // Edges live in the texture, not as separate line geometry. Lines floating
+    // at a fixed radius get buried by the displaced terrain and poke through in
+    // fragments, which is what the white speckling along every border was.
+    fillFeatures(colorCtx, land.features, width, height, PALETTE.land);
+  });
+
+  await stage(0.45, "Tracing the coastlines", () => {
+    // A one texel line ends up sub-pixel once the sphere is on screen, which is
+    // what made the borders look soft. Scale the stroke with the texture so the
+    // lines stay solid at any size.
+    const edgeWidth = Math.max(1.5, size / 2048);
+    strokeFeatures(colorCtx, borders.features, width, height, PALETTE.border, edgeWidth);
+    strokeFeatures(colorCtx, land.features, width, height, PALETTE.coast, edgeWidth);
+  });
 
   // Land mask drives displacement, so it only needs to be black or white.
   const maskCanvas = makeCanvas(width / 2, height / 2);
   const maskCtx = maskCanvas.getContext("2d");
-  maskCtx.fillStyle = "#000000";
-  maskCtx.fillRect(0, 0, width / 2, height / 2);
-  fillFeatures(maskCtx, land.features, width / 2, height / 2, "#ffffff");
+
+  await stage(0.7, "Raising the terrain", () => {
+    maskCtx.fillStyle = "#000000";
+    maskCtx.fillRect(0, 0, width / 2, height / 2);
+    fillFeatures(maskCtx, land.features, width / 2, height / 2, "#ffffff");
+  });
 
   // Id map is never displayed, it is sampled to find out which country is
   // under the cursor, so it must not be smoothed or compressed.
   const idCanvas = makeCanvas(width / 2, height / 2);
   const idCtx = idCanvas.getContext("2d", { willReadFrequently: true });
-  idCtx.fillStyle = "#000000";
-  idCtx.fillRect(0, 0, width / 2, height / 2);
-  countries.features.forEach((feature, index) => {
-    const [r, g, b] = indexToColor(index);
-    fillFeatures(idCtx, [feature], width / 2, height / 2, `rgb(${r},${g},${b})`);
+  let idData = null;
+
+  await stage(0.87, "Indexing " + countries.features.length + " countries", () => {
+    idCtx.fillStyle = "#000000";
+    idCtx.fillRect(0, 0, width / 2, height / 2);
+    countries.features.forEach((feature, index) => {
+      const [r, g, b] = indexToColor(index);
+      fillFeatures(idCtx, [feature], width / 2, height / 2, `rgb(${r},${g},${b})`);
+    });
+    idData = idCtx.getImageData(0, 0, idCanvas.width, idCanvas.height);
   });
 
   const colorMap = new THREE.CanvasTexture(colorCanvas);
@@ -193,7 +235,7 @@ export function buildGlobeTextures({ land, borders, countries, size, maxAnisotro
   idMap.minFilter = THREE.NearestFilter;
   idMap.generateMipmaps = false;
 
-  const idData = idCtx.getImageData(0, 0, idCanvas.width, idCanvas.height);
+  onProgress(1.0, "Ready");
 
   return {
     colorMap,

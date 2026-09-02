@@ -161,25 +161,80 @@ const pinHeads = markers.map(m => m.head);
 
 let countryPicker = null;
 
+const loaderEl = document.getElementById('loader');
+const loaderBarEl = document.getElementById('loader-bar');
+const loaderFillEl = document.getElementById('loader-fill');
+const loaderStatusEl = document.getElementById('loader-status');
+
+function setLoaderProgress(fraction, label) {
+  const clamped = Math.max(0, Math.min(1, fraction));
+  loaderFillEl.style.transform = 'scaleX(' + clamped + ')';
+  loaderBarEl.setAttribute('aria-valuenow', String(Math.round(clamped * 100)));
+  if (label) loaderStatusEl.textContent = label;
+}
+
+function hideLoader() {
+  loaderEl.classList.add('done');
+  // Releases the landing copy, which has been sitting paused at the start of
+  // its own fade in.
+  document.body.classList.remove('loading');
+  // Pulled out of the tree once it has faded so it can never swallow a click.
+  // On a timer rather than transitionend, which does not fire when a reduced
+  // motion setting has removed the transition.
+  setTimeout(() => { loaderEl.hidden = true; }, 800);
+}
+
+/*
+ * Weighted by file size so the bar moves roughly in step with what is left to
+ * download. Byte level progress is not usable here: Pages serves these
+ * gzipped, so the reported content length is the compressed size and the
+ * decompressed stream runs straight past it.
+ */
+const DATA_FILES = [
+  { url: './geojson/ne_50m_land.json', weight: 0.69 },
+  { url: './geojson/ne_50m_admin_0_boundary_lines_land.json', weight: 0.24 },
+  { url: './geojson/countries.json', weight: 0.07 },
+];
+
+// Downloading owns the first third of the bar and rasterising the rest, which
+// is roughly how the wait splits on a normal connection.
+const DOWNLOAD_SHARE = 0.35;
+
+function loadGeoData() {
+  let done = 0;
+  setLoaderProgress(0.02, 'Loading map data');
+
+  return Promise.all(
+    DATA_FILES.map(({ url, weight }) =>
+      fetch(url).then((response) => {
+        if (!response.ok) throw new Error(url + ' returned ' + response.status);
+        return response.json();
+      }).then((json) => {
+        done += weight;
+        setLoaderProgress(done * DOWNLOAD_SHARE);
+        return json;
+      })
+    )
+  );
+}
+
 // One pass over the GeoJSON produces everything: the surface texture, the
 // land mask that raises the continents, and the id map used for picking.
 // The vector coastlines stay on top so edges keep their crispness.
-Promise.all([
-  fetch('./geojson/ne_50m_land.json').then(r => r.json()),
-  fetch('./geojson/ne_50m_admin_0_boundary_lines_land.json').then(r => r.json()),
-  fetch('./geojson/countries.json').then(r => r.json()),
-]).then(([landJson, bordersJson, countriesJson]) => {
-  const textures = buildGlobeTextures({
+async function boot() {
+  const [landJson, bordersJson, countriesJson] = await loadGeoData();
+
+  const textures = await buildGlobeTextures({
     land: landJson,
     borders: bordersJson,
     countries: countriesJson,
-    // iOS Safari caps total canvas area near 16.7M pixels, so 4096x2048 is
-    // the most a phone can take. Desktop gets double the linear resolution.
     // iOS Safari caps total canvas area near 16.7M pixels, so 4096x2048 is
     // the most a phone can take. 8192 on desktop would be a 134MB texture and
     // a visible hang while it rasterises, so 6144 is the useful ceiling.
     size: isMobile ? 4096 : 6144,
     maxAnisotropy: renderer.capabilities.getMaxAnisotropy(),
+    onProgress: (fraction, label) =>
+      setLoaderProgress(DOWNLOAD_SHARE + fraction * (1 - DOWNLOAD_SHARE), label),
   });
 
   solidSphereMat.map = textures.colorMap;
@@ -193,6 +248,20 @@ Promise.all([
     idData: textures.idData,
     countryNames: textures.countryNames,
   });
+
+  // The textures are uploaded and the material recompiled on the first frame
+  // that actually draws them. Uncovering before that lands shows the bare
+  // white placeholder sphere for a beat.
+  await new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  );
+  hideLoader();
+}
+
+boot().catch((error) => {
+  console.error(error);
+  setLoaderProgress(1, 'Could not load the map. Try reloading.');
+  loaderEl.classList.add('failed');
 });
 
 const titleEl = document.getElementById('title');
