@@ -1,10 +1,11 @@
 import * as THREE from "three";
 import { OrbitControls } from 'jsm/controls/OrbitControls.js';
 import getStarfield from "./src/getStarfield.js";
-import { createMarkers, LANGUAGES } from "./src/languageMarkers.js";
+import { createMarkers, latLonToVec3, LANGUAGES } from "./src/languageMarkers.js";
 import { buildGlobeTextures } from "./src/globeTextures.js";
 import { createAtmosphere } from "./src/atmosphere.js";
 import { createCountryPicker } from "./src/countryPicker.js";
+import { subsolarPoint } from "./src/sunPosition.js";
 
 const w = window.innerWidth;
 const h = window.innerHeight;
@@ -49,12 +50,51 @@ const edges = new THREE.EdgesGeometry(geometry, 1);
 const line = new THREE.LineSegments(edges, lineMat);
 globeGroup.add(line);
 
-// Lit rather than MeshBasic, so the sphere actually shades and shows a
-// terminator instead of reading as a flat disc.
+/*
+ * Lit rather than MeshBasic, so the sphere actually shades and shows a
+ * terminator instead of reading as a flat disc.
+ *
+ * The sun is the real one. Its direction is the subsolar point for the
+ * current clock time, which is why the light hangs off the globe and not off
+ * the scene: however the globe is turned or dragged, the lit half stays over
+ * the countries that are in daylight right now.
+ */
+const sunDirection = new THREE.Vector3(0, 0, 1);
 const sunLight = new THREE.DirectionalLight(0xfff4e6, 2.6);
-sunLight.position.set(-5, 2, 4);
-scene.add(sunLight);
+globeGroup.add(sunLight);
+// The target has to be in the graph for three to read its world matrix. Left
+// at the origin, which is the globe's centre.
+globeGroup.add(sunLight.target);
 scene.add(new THREE.AmbientLight(0x2a3a4a, 1.1));
+
+const SUN_DISTANCE = 50;
+// Once a second. The sun crosses 0.004 degrees in that time, so nothing on
+// screen ever steps, and it saves recomputing the almanac every frame.
+const SUN_UPDATE_MS = 1000;
+let lastSunUpdate = -Infinity;
+
+function updateSun(date = new Date()) {
+  const { lat, lon } = subsolarPoint(date);
+  // The same projection the language pins use, so "over Tokyo" means the same
+  // thing to the light as it does to a marker.
+  sunDirection.copy(latLonToVec3(lat, lon, 1));
+  sunLight.position.copy(sunDirection).multiplyScalar(SUN_DISTANCE);
+}
+
+updateSun();
+
+/*
+ * Open on the daylit side. The globe keeps turning and the terminator still
+ * crosses it within the first minute, this only decides which face the very
+ * first frame shows, which would otherwise be the middle of the night for a
+ * good part of every day. The offset leaves the terminator near the limb
+ * rather than putting the brightest point dead centre, where the sphere
+ * flattens out.
+ */
+const OPENING_SUN_OFFSET_DEG = 35;
+globeGroup.rotation.y = THREE.MathUtils.degToRad(
+  -90 - subsolarPoint().lon + OPENING_SUN_OFFSET_DEG
+);
 
 const SPHERE_SEGMENTS = isMobile ? 256 : 512;
 const solidSphereGeo = new THREE.SphereGeometry(1.99, SPHERE_SEGMENTS, SPHERE_SEGMENTS / 2);
@@ -108,7 +148,8 @@ solidSphereMat.onBeforeCompile = (shader) => {
 const solidSphere = new THREE.Mesh(solidSphereGeo, solidSphereMat);
 globeGroup.add(solidSphere);
 
-const atmosphere = createAtmosphere({ radius: 2 });
+// Shares the vector by reference, so moving the sun moves the glow with it.
+const atmosphere = createAtmosphere({ radius: 2, sunDirection });
 globeGroup.add(atmosphere);
 
 const stars = getStarfield({ numStars: 1000 });
@@ -530,6 +571,12 @@ function cubicEaseInOut(t) {
 
 function animate() {
   requestAnimationFrame(animate);
+
+  const nowMs = performance.now();
+  if (nowMs - lastSunUpdate >= SUN_UPDATE_MS) {
+    lastSunUpdate = nowMs;
+    updateSun();
+  }
 
   if (transitionAnim) {
     const elapsed = performance.now() - transitionAnim.startTime;
