@@ -7,13 +7,46 @@ import { createAtmosphere } from "./src/atmosphere.js";
 import { createCountryPicker } from "./src/countryPicker.js";
 import { subsolarPoint } from "./src/sunPosition.js";
 
+/*
+ * Switches for looking at a slow machine, both off unless asked for:
+ *   ?stats   frame timings and the name of the GPU doing the work
+ *   ?half    pins the resolution to half, skipping the automatic watch
+ */
+const PARAMS = new URLSearchParams(location.search);
+const SHOW_STATS = PARAMS.has('stats');
+const HALF_RES = PARAMS.has('half');
+
 const w = window.innerWidth;
 const h = window.innerHeight;
 const scene = new THREE.Scene();
 
 const camera = new THREE.PerspectiveCamera(75, w / h, 1, 100);
 camera.position.z = 5;
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+/*
+ * Capped at 2 because rendering a displaced sphere at 3x costs more than it
+ * gains. Lowered further by the quality watch below if the machine cannot
+ * keep up with it.
+ */
+const BASE_PIXEL_RATIO = Math.min(window.devicePixelRatio || 1, 2);
+let qualityScale = 1;
+
+/*
+ * Multisampling is charged per sample across the entire framebuffer. A 4K
+ * display at 1.5 device pixels is 8.3 million of them before anything is
+ * drawn, and asking for 4x MSAA on top quadruples the samples the card has to
+ * write and resolve. At that pixel density the aliasing it removes is already
+ * smaller than a pixel, so it is paying a lot to fix something nobody can
+ * see. Below that it is cheap and worth having.
+ *
+ * powerPreference is separate: on a machine with both an integrated chip and
+ * a discrete card, the default lets the browser choose, and it often picks
+ * the integrated one.
+ */
+const FRAMEBUFFER_PIXELS = w * h * BASE_PIXEL_RATIO * BASE_PIXEL_RATIO;
+const renderer = new THREE.WebGLRenderer({
+  antialias: FRAMEBUFFER_PIXELS < 4e6,
+  powerPreference: "high-performance",
+});
 
 /*
  * Without this the framebuffer is one device pixel per CSS pixel, so on a
@@ -23,12 +56,29 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
  * 3x costs more than it gains.
  */
 function pixelRatio() {
-  return Math.min(window.devicePixelRatio || 1, 2);
+  const ratio = HALF_RES ? BASE_PIXEL_RATIO * 0.5 : BASE_PIXEL_RATIO;
+  return ratio * qualityScale;
 }
 
 renderer.setPixelRatio(pixelRatio());
 renderer.setSize(w, h);
 document.body.appendChild(renderer.domElement);
+
+/*
+ * Anisotropic filtering costs a texture sample per step, so asking for the
+ * maximum the driver reports, usually 16, means up to sixteen reads per
+ * fragment across the whole globe. Eight keeps the grazing angles sharp for
+ * half the bandwidth, and the difference is not visible at this size.
+ */
+const ANISOTROPY = Math.min(renderer.capabilities.getMaxAnisotropy(), 8);
+
+/*
+ * 4096 is what the phone runs, and the phone runs it smoothly. Desktop was on
+ * 6144 from an attempt to fix blurry borders that turned out to be a pixel
+ * ratio problem instead, so the extra 2.25x of texels was buying very little
+ * and costing a slower load and a lot of texture bandwidth.
+ */
+const TEXTURE_SIZE = 4096;
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -134,12 +184,15 @@ solidSphereMat.onBeforeCompile = (shader) => {
       uniform float uHighlightId;
       uniform vec3 uHighlightColor;`)
     .replace('#include <map_fragment>', `#include <map_fragment>
-      {
+      // Nothing is hovered most of the time, and uHighlightId is the same for
+      // every fragment in the draw call, so the whole lookup can be skipped
+      // rather than sampling the id map once per pixel on screen.
+      if (uHighlightId >= 0.0) {
         vec3 idTexel = texture2D(uIdMap, vMapUv).rgb;
         float id = floor(idTexel.r * 255.0 + 0.5) * 65536.0
                  + floor(idTexel.g * 255.0 + 0.5) * 256.0
                  + floor(idTexel.b * 255.0 + 0.5);
-        if (uHighlightId >= 0.0 && abs(id - uHighlightId) < 0.5) {
+        if (abs(id - uHighlightId) < 0.5) {
           diffuseColor.rgb = mix(diffuseColor.rgb, uHighlightColor, 0.55);
         }
       }`);
@@ -182,6 +235,10 @@ function hideLoader() {
   // On a timer rather than transitionend, which does not fire when a reduced
   // motion setting has removed the transition.
   setTimeout(() => { loaderEl.hidden = true; }, 800);
+  // Not immediately: the first frames after this are uploading textures and
+  // compiling shaders, and judging the machine on those would knock the
+  // quality down on hardware that is actually fine.
+  setTimeout(startQualityWatch, 1200);
 }
 
 /*
@@ -229,10 +286,9 @@ async function boot() {
     borders: bordersJson,
     countries: countriesJson,
     // iOS Safari caps total canvas area near 16.7M pixels, so 4096x2048 is
-    // the most a phone can take. 8192 on desktop would be a 134MB texture and
-    // a visible hang while it rasterises, so 6144 is the useful ceiling.
-    size: isMobile ? 4096 : 6144,
-    maxAnisotropy: renderer.capabilities.getMaxAnisotropy(),
+    // also the most a phone can take.
+    size: TEXTURE_SIZE,
+    maxAnisotropy: ANISOTROPY,
     onProgress: (fraction, label) =>
       setLoaderProgress(DOWNLOAD_SHARE + fraction * (1 - DOWNLOAD_SHARE), label),
   });
@@ -247,6 +303,7 @@ async function boot() {
     globeMesh: solidSphere,
     idData: textures.idData,
     countryNames: textures.countryNames,
+    radius: GLOBE_RADIUS,
   });
 
   // The textures are uploaded and the material recompiled on the first frame
@@ -284,6 +341,8 @@ const TITLE_MAX_SIZE = 28;
 const TITLE_MIN_SIZE = 14;
 
 const raycaster = new THREE.Raycaster();
+const _globeSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 2);
+const _globeHit = new THREE.Vector3();
 const pointerDownPos = new THREE.Vector2();
 let hoveredIndex = -1;
 
@@ -373,8 +432,10 @@ renderer.domElement.addEventListener("pointerup", (e) => {
   raycaster.setFromCamera(clickNDC, camera);
 
   if (appState === "landing") {
-    const globeHits = raycaster.intersectObject(solidSphere, false);
-    if (globeHits.length > 0) {
+    // Analytic, for the same reason the country picker is: there is no point
+    // walking a quarter of a million triangles to find out whether a click
+    // landed on a sphere.
+    if (raycaster.ray.intersectSphere(_globeSphere, _globeHit)) {
       startTransition();
     }
     return;
@@ -508,7 +569,6 @@ function selectMarker(index) {
     startZoom(ZOOM_CLOSE);
     showInfoCard(index);
   }
-  syncHash(index);
   updateLanguageListActive();
 }
 
@@ -520,7 +580,6 @@ function deselectMarker() {
     hideInfoCard();
   }
   selectedIndex = -1;
-  syncHash(-1);
   updateLanguageListActive();
 }
 
@@ -640,6 +699,8 @@ function cubicEaseInOut(t) {
 
 function animate() {
   requestAnimationFrame(animate);
+  const frameStart = performance.now();
+  considerQuality(frameStart);
 
   const nowMs = performance.now();
   if (nowMs - lastSunUpdate >= SUN_UPDATE_MS) {
@@ -725,7 +786,11 @@ function animate() {
 
   updateBackfaceVisibility();
   controls.update();
+
+  const drawStart = performance.now();
   renderer.render(scene, camera);
+  // After the draw, so the triangle and call counts are this frame's.
+  updateStats(frameStart, drawStart, performance.now());
 }
 
 markers.forEach((m, i) => {
@@ -733,27 +798,179 @@ markers.forEach((m, i) => {
   m.head.scale.setScalar(initialScale);
 });
 
+// --- Diagnostics ------------------------------------------------------------
+/*
+ * Add ?stats to the URL for a frame counter and the name of the GPU actually
+ * doing the work. That name is the important one: a machine can have a decent
+ * card and still be handing WebGL the integrated chip, and there is no way to
+ * tell from the frame rate alone.
+ */
+
+let statsEl = null;
+let statsFrames = 0;
+let statsSince = performance.now();
+let gpuName = null;
+// Split three ways, because the fix depends entirely on which one is big.
+// logic is everything this file does per frame, draw is the render call
+// itself, and frame is wall clock between frames. If frame is far larger than
+// logic plus draw, the time is going somewhere outside the loop.
+let statsLogic = 0;
+let statsDraw = 0;
+let statsWall = 0;
+let statsPrevStart = 0;
+
+if (SHOW_STATS) {
+  statsEl = document.createElement('div');
+  statsEl.style.cssText =
+    'position:fixed;left:12px;bottom:12px;z-index:60;padding:8px 10px;' +
+    'font:11px/1.6 monospace;color:#7CFC98;background:rgba(0,0,0,0.75);' +
+    'white-space:pre;pointer-events:none;';
+  document.body.appendChild(statsEl);
+
+  const gl = renderer.getContext();
+  // Only exposed through an extension, and some browsers withhold it to make
+  // fingerprinting harder, so it can legitimately come back empty.
+  const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+  gpuName = debugInfo
+    ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
+    : 'not reported';
+  // Also to the console, so it can be copied rather than read off the canvas.
+  console.log('[mosir] GPU:', gpuName);
+  console.log('[mosir] WebGL:', gl.getParameter(gl.VERSION));
+}
+
+function updateStats(frameStart, drawStart, drawEnd) {
+  if (!statsEl) return;
+  statsFrames++;
+  statsLogic += drawStart - frameStart;
+  statsDraw += drawEnd - drawStart;
+  if (statsPrevStart) statsWall += frameStart - statsPrevStart;
+  statsPrevStart = frameStart;
+
+  const now = performance.now();
+  const elapsed = now - statsSince;
+  if (elapsed < 500) return;
+
+  const n = statsFrames;
+  const fps = (n * 1000) / elapsed;
+  const ratio = renderer.getPixelRatio();
+
+  statsEl.textContent = [
+    'fps      ' + fps.toFixed(0),
+    'logic    ' + (statsLogic / n).toFixed(1) + ' ms',
+    'draw     ' + (statsDraw / n).toFixed(1) + ' ms',
+    'frame    ' + (statsWall / Math.max(1, n - 1)).toFixed(1) + ' ms',
+    'gpu      ' + gpuName,
+    'buffer   ' + Math.round(window.innerWidth * ratio) + ' x ' +
+      Math.round(window.innerHeight * ratio) + '  (dpr ' + ratio + ')',
+    'scale    ' + qualityScale + (watchingQuality ? ' (watching)' : ''),
+    'msaa     ' + (renderer.capabilities.isWebGL2 && FRAMEBUFFER_PIXELS < 4e6 ? 'on' : 'off'),
+    'texture  ' + TEXTURE_SIZE + ' x ' + TEXTURE_SIZE / 2,
+    'aniso    ' + ANISOTROPY,
+    'tris     ' + renderer.info.render.triangles.toLocaleString(),
+    'calls    ' + renderer.info.render.calls,
+  ].join('\n');
+
+  statsFrames = 0;
+  statsSince = now;
+  statsLogic = 0;
+  statsDraw = 0;
+  statsWall = 0;
+}
+
+// --- Adaptive quality -------------------------------------------------------
+/*
+ * Not every visitor gets a GPU. Both Firefox and Chrome fall back to a
+ * software rasteriser when they distrust the graphics driver, and rendering
+ * on the CPU is close to purely fill rate bound: the same scene that crawls
+ * at 2 fps full size runs above 30 with a quarter of the pixels. Shader
+ * complexity barely moves it, resolution moves it enormously.
+ *
+ * So rather than hand those visitors a slideshow, measure what the machine
+ * actually manages once the globe is up and step the resolution down until it
+ * is smooth. A slightly softer globe that turns beats a sharp one that does
+ * not.
+ */
+
+const QUALITY_SCALES = [1, 0.75, 0.55, 0.4];
+const QUALITY_TARGET_FPS = 30;
+/*
+ * One bad second can be a background tab loading or a collection pause, and
+ * the step down is never reversed, so a merely marginal reading has to repeat
+ * before it counts. A catastrophic one does not have to: nothing transient
+ * looks like six frames a second.
+ */
+const QUALITY_URGENT_FPS = 15;
+let qualityStrikes = 0;
+let qualityIndex = 0;
+let qualityFrames = 0;
+let qualityStart = 0;
+let watchingQuality = false;
+
+function startQualityWatch() {
+  // ?half is a deliberate override, so leave it where it was put.
+  if (HALF_RES) return;
+  watchingQuality = true;
+  qualityFrames = 0;
+  qualityStart = performance.now();
+}
+
+function considerQuality(now) {
+  if (!watchingQuality) return;
+  qualityFrames++;
+
+  const elapsed = now - qualityStart;
+  // Long enough to be a real average, short enough that a struggling machine
+  // is not left struggling.
+  if (elapsed < 1000) return;
+
+  const fps = (qualityFrames * 1000) / elapsed;
+  qualityFrames = 0;
+  qualityStart = now;
+
+  if (fps >= QUALITY_TARGET_FPS) {
+    watchingQuality = false;
+    return;
+  }
+
+  if (fps >= QUALITY_URGENT_FPS && qualityStrikes === 0) {
+    qualityStrikes = 1;
+    return;
+  }
+
+  qualityStrikes = 0;
+  if (qualityIndex >= QUALITY_SCALES.length - 1) {
+    watchingQuality = false;
+    return;
+  }
+
+  qualityIndex++;
+  qualityScale = QUALITY_SCALES[qualityIndex];
+  // setPixelRatio reapplies the canvas size itself, so this is the whole
+  // change: the scene is untouched, it just renders into fewer pixels.
+  renderer.setPixelRatio(pixelRatio());
+}
+
 animate();
 
 // --- Deep links -------------------------------------------------------------
-// Each language gets a hash so a marker can be linked and shared, which was
-// impossible before: every state lived only in memory.
+/*
+ * A hash still opens a marker, so a link to one language can be shared, but it
+ * is read once and then wiped from the address bar, and clicking a marker no
+ * longer writes to the URL at all. Mirroring the selection into the hash meant
+ * a reload reopened whatever was last clicked, which made the piece feel like
+ * it remembered you. It should always start from the landing.
+ */
 
 function slugFor(lang) {
   return lang.name.toLowerCase().replace(/[^a-z]/g, '');
 }
 
-function syncHash(index) {
-  const hash = index >= 0 ? '#' + slugFor(markers[index].lang) : ' ';
-  if (index >= 0) {
-    if (location.hash !== hash) history.replaceState(null, '', hash);
-  } else if (location.hash) {
+function consumeHash() {
+  const slug = location.hash.replace('#', '').toLowerCase();
+  if (location.hash) {
     history.replaceState(null, '', location.pathname + location.search);
   }
-}
-
-function indexFromHash() {
-  const slug = location.hash.replace('#', '').toLowerCase();
   if (!slug) return -1;
   return markers.findIndex((m) => slugFor(m.lang) === slug);
 }
@@ -891,7 +1108,7 @@ renderer.domElement.addEventListener('wheel', stopTour, { passive: true });
 // --- Entry point ------------------------------------------------------------
 
 window.addEventListener('load', () => {
-  const index = indexFromHash();
+  const index = consumeHash();
   if (index >= 0) skipLandingTo(index);
 });
 
