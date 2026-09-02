@@ -139,7 +139,7 @@ export function colorToIndex(r, g, b) {
   return ((r << 16) | (g << 8) | b) - 1;
 }
 
-export function buildGlobeTextures({ land, borders, countries, size }) {
+export function buildGlobeTextures({ land, borders, countries, size, maxAnisotropy = 8 }) {
   const width = size;
   const height = size / 2;
 
@@ -152,7 +152,10 @@ export function buildGlobeTextures({ land, borders, countries, size }) {
   // at a fixed radius get buried by the displaced terrain and poke through in
   // fragments, which is what the white speckling along every border was.
   fillFeatures(colorCtx, land.features, width, height, PALETTE.land);
-  const edgeWidth = Math.max(1, size / 4096);
+  // A one texel line ends up sub-pixel once the sphere is on screen, which is
+  // what made the borders look soft. Scale the stroke with the texture so the
+  // lines stay solid at any size.
+  const edgeWidth = Math.max(1.5, size / 2048);
   strokeFeatures(colorCtx, borders.features, width, height, PALETTE.border, edgeWidth);
   strokeFeatures(colorCtx, land.features, width, height, PALETTE.coast, edgeWidth);
 
@@ -176,7 +179,12 @@ export function buildGlobeTextures({ land, borders, countries, size }) {
 
   const colorMap = new THREE.CanvasTexture(colorCanvas);
   colorMap.colorSpace = THREE.SRGBColorSpace;
-  colorMap.anisotropy = 8;
+  // Most of the blurring is at grazing angles, where the sphere curves away.
+  // Anisotropic filtering is exactly the fix for that, so take what the GPU
+  // will give rather than assuming 8.
+  colorMap.anisotropy = maxAnisotropy;
+  colorMap.minFilter = THREE.LinearMipmapLinearFilter;
+  colorMap.magFilter = THREE.LinearFilter;
 
   const displacementMap = new THREE.CanvasTexture(maskCanvas);
 

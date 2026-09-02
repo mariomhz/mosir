@@ -119,7 +119,13 @@ Promise.all([
     land: landJson,
     borders: bordersJson,
     countries: countriesJson,
-    size: isMobile ? 2048 : 4096,
+    // iOS Safari caps total canvas area near 16.7M pixels, so 4096x2048 is
+    // the most a phone can take. Desktop gets double the linear resolution.
+    // iOS Safari caps total canvas area near 16.7M pixels, so 4096x2048 is
+    // the most a phone can take. 8192 on desktop would be a 134MB texture and
+    // a visible hang while it rasterises, so 6144 is the useful ceiling.
+    size: isMobile ? 4096 : 6144,
+    maxAnisotropy: renderer.capabilities.getMaxAnisotropy(),
   });
 
   solidSphereMat.map = textures.colorMap;
