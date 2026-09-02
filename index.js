@@ -13,6 +13,19 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, w / h, 1, 100);
 camera.position.z = 5;
 const renderer = new THREE.WebGLRenderer({ antialias: true });
+
+/*
+ * Without this the framebuffer is one device pixel per CSS pixel, so on a
+ * phone at devicePixelRatio 3 the whole scene was rendered at a third of the
+ * screen resolution and upscaled. That, not the texture size, is what made the
+ * borders look pixelated. Capped at 2 because rendering a displaced sphere at
+ * 3x costs more than it gains.
+ */
+function pixelRatio() {
+  return Math.min(window.devicePixelRatio || 1, 2);
+}
+
+renderer.setPixelRatio(pixelRatio());
 renderer.setSize(w, h);
 document.body.appendChild(renderer.domElement);
 
@@ -769,6 +782,8 @@ window.addEventListener('load', () => {
 function handleWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+  // Rotating a phone can move it between displays or change the ratio.
+  renderer.setPixelRatio(pixelRatio());
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 window.addEventListener('resize', handleWindowResize, false);
